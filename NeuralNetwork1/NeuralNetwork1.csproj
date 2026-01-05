@@ -97,6 +97,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AccordNet.cs" />
+    <Compile Include="AugmentationHelper.cs" />
     <Compile Include="BaseNetwork.cs" />
     <Compile Include="CameraProcessor.cs" />
     <Compile Include="NeuralNetworksStand.cs">

@@ -36,6 +36,7 @@
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
             this.label1 = new System.Windows.Forms.Label();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
+            this.btnLoadDataset = new System.Windows.Forms.Button();
             this.label11 = new System.Windows.Forms.Label();
             this.netTypeBox = new System.Windows.Forms.ComboBox();
             this.parallelCheckBox = new System.Windows.Forms.CheckBox();
@@ -143,6 +144,7 @@
             // 
             // groupBox1
             // 
+            this.groupBox1.Controls.Add(this.btnLoadDataset);
             this.groupBox1.Controls.Add(this.label11);
             this.groupBox1.Controls.Add(this.netTypeBox);
             this.groupBox1.Controls.Add(this.parallelCheckBox);
@@ -163,10 +165,23 @@
             this.groupBox1.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.groupBox1.Name = "groupBox1";
             this.groupBox1.Padding = new System.Windows.Forms.Padding(4, 5, 4, 5);
-            this.groupBox1.Size = new System.Drawing.Size(441, 460);
+            this.groupBox1.Size = new System.Drawing.Size(441, 520);
             this.groupBox1.TabIndex = 3;
             this.groupBox1.TabStop = false;
             this.groupBox1.Text = "Параметры сети";
+            // 
+            // btnLoadDataset
+            // 
+            this.btnLoadDataset.BackColor = System.Drawing.Color.LightCyan;
+            this.btnLoadDataset.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(204)));
+            this.btnLoadDataset.Location = new System.Drawing.Point(46, 458);
+            this.btnLoadDataset.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.btnLoadDataset.Name = "btnLoadDataset";
+            this.btnLoadDataset.Size = new System.Drawing.Size(348, 46);
+            this.btnLoadDataset.TabIndex = 22;
+            this.btnLoadDataset.Text = "Загрузить датасет";
+            this.btnLoadDataset.UseVisualStyleBackColor = false;
+            this.btnLoadDataset.Click += new System.EventHandler(this.BtnLoadDataset_Click);
             // 
             // label11
             // 
@@ -209,7 +224,7 @@
             this.netStructureBox.Name = "netStructureBox";
             this.netStructureBox.Size = new System.Drawing.Size(178, 26);
             this.netStructureBox.TabIndex = 18;
-            this.netStructureBox.Text = "400;500;20;2";
+            this.netStructureBox.Text = "400;500;20;10";
             // 
             // recreateNetButton
             // 
@@ -474,5 +489,6 @@
         private System.Windows.Forms.ComboBox netTypeBox;
         private System.Windows.Forms.Label label11;
         private System.Windows.Forms.Label StatusLabel;
+        private System.Windows.Forms.Button btnLoadDataset;
     }
 }

@@ -14,8 +14,7 @@ namespace NeuralNetwork1
         private SamplesSet _trainingSet = new SamplesSet();
 
         private string _debugFolderPath = Path.Combine(Application.StartupPath, "DebugDataset");
-
-        private string _defaultStructure = "1024;150;10";
+        private string _defaultStructure = "1024;400;100;10"; // Сделал сеть поглубже
 
         private readonly Dictionary<string, Func<int[], BaseNetwork>> networksFabric;
         private Dictionary<string, BaseNetwork> networksCache = new Dictionary<string, BaseNetwork>();
@@ -42,7 +41,6 @@ namespace NeuralNetwork1
 
             StartCamera();
             CustomizeInterface();
-
             PrepareDebugFolder();
         }
 
@@ -50,16 +48,10 @@ namespace NeuralNetwork1
         {
             try
             {
-                if (Directory.Exists(_debugFolderPath))
-                {
-                    Directory.Delete(_debugFolderPath, true);
-                }
+               // if (Directory.Exists(_debugFolderPath)) Directory.Delete(_debugFolderPath, true);
                 Directory.CreateDirectory(_debugFolderPath);
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Не удалось создать папку отладки: " + ex.Message);
-            }
+            catch { }
         }
 
         private void CustomizeInterface()
@@ -75,7 +67,84 @@ namespace NeuralNetwork1
             recreateNetButton.Text = "Сброс сети";
 
             StatusLabel.Text = $"Фото сохраняются в: {_debugFolderPath}";
-            label1.Text = "Выберите цифру и нажмите 'Добавить пример'";
+            label1.Text = "Выберите цифру и нажмите 'Добавить пример' или загрузите датасет";
+        }
+
+        // Обработчик загрузки датасета из папок
+        private void BtnLoadDataset_Click(object sender, EventArgs e)
+        {
+            using (var dialog = new FolderBrowserDialog())
+            {
+                dialog.Description = "Выберите корневую папку с цифрами (внутри должны быть папки 0, 1 ... 9)";
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    string rootPath = dialog.SelectedPath;
+                    int loadedCount = 0;
+                    _trainingSet = new SamplesSet(); // Сброс старого датасета
+
+                    for (int i = 0; i < 10; i++)
+                    {
+                        string dir = Path.Combine(rootPath, i.ToString());
+                        if (!Directory.Exists(dir)) continue;
+
+                        var files = Directory.GetFiles(dir).Where(f => f.EndsWith(".png") || f.EndsWith(".jpg") || f.EndsWith(".bmp"));
+
+                        // Параллельная загрузка изображений для скорости
+                        object sync = new object();
+                        Parallel.ForEach(files, file =>
+                        {
+                            Sample s = LoadSampleFromFile(file, (FigureType)i);
+                            if (s != null)
+                            {
+                                lock (sync)
+                                {
+                                    _trainingSet.AddSample(s);
+                                    loadedCount++;
+                                }
+                            }
+                        });
+                    }
+
+                    if (loadedCount > 0)
+                    {
+                        label1.Text = $"Загружено: {loadedCount} фото.";
+                        label1.ForeColor = Color.Blue;
+                        MessageBox.Show($"Успешно загружено {loadedCount} изображений!");
+                    }
+                    else
+                    {
+                        MessageBox.Show("Изображения не найдены. Проверьте структуру папок (0..9).");
+                    }
+                }
+            }
+        }
+
+        private Sample LoadSampleFromFile(string path, FigureType type)
+        {
+            try
+            {
+                using (Bitmap original = new Bitmap(path))
+                {
+                    // Приводим к размеру 32x32
+                    using (Bitmap scaled = new Bitmap(original, new Size(32, 32)))
+                    {
+                        double[] input = new double[32 * 32];
+                        for (int y = 0; y < 32; y++)
+                        {
+                            for (int x = 0; x < 32; x++)
+                            {
+                                Color c = scaled.GetPixel(x, y);
+                                // Если изображение цветное или Grayscale:
+                                // Принимаем, что белый фон (255) -> 0.0, черные чернила (0) -> 1.0
+                                double brightness = (c.R + c.G + c.B) / (3.0 * 255.0);
+                                input[y * 32 + x] = 1.0 - brightness;
+                            }
+                        }
+                        return new Sample(input, 10, type);
+                    }
+                }
+            }
+            catch { return null; }
         }
 
         private void StartCamera()
@@ -95,7 +164,7 @@ namespace NeuralNetwork1
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Camera Error: " + ex.Message);
+                MessageBox.Show("Ошибка камеры: " + ex.Message);
             }
         }
 
@@ -103,110 +172,128 @@ namespace NeuralNetwork1
         {
             try
             {
+                // Создаем подпапку для конкретной цифры (например, "DebugDataset/5")
+                string classFolder = Path.Combine(_debugFolderPath, ((int)sample.actualClass).ToString());
+                if (!Directory.Exists(classFolder)) Directory.CreateDirectory(classFolder);
+
                 int size = 32;
-                Bitmap bmp = new Bitmap(size, size);
-
-                for (int y = 0; y < size; y++)
+                using (Bitmap bmp = new Bitmap(size, size))
                 {
-                    for (int x = 0; x < size; x++)
+                    for (int y = 0; y < size; y++)
                     {
-                        double val = sample.input[y * size + x];
-
-                        int colorVal = (int)(val * 255);
-
-                        colorVal = Math.Max(0, Math.Min(255, colorVal));
-
-                        bmp.SetPixel(x, y, Color.FromArgb(colorVal, colorVal, colorVal));
+                        for (int x = 0; x < size; x++)
+                        {
+                            double val = sample.input[y * size + x];
+                            // Инверсия: 1.0 -> Черный (0), 0.0 -> Белый (255)
+                            int colorVal = (int)((1.0 - val) * 255);
+                            colorVal = Math.Max(0, Math.Min(255, colorVal));
+                            bmp.SetPixel(x, y, Color.FromArgb(colorVal, colorVal, colorVal));
+                        }
                     }
+                    // Сохраняем внутрь папки цифры
+                    string filename = $"{Guid.NewGuid().ToString().Substring(0, 8)}_{suffix}.png";
+                    bmp.Save(Path.Combine(classFolder, filename));
                 }
-
-                string filename = $"{sample.actualClass}_{Guid.NewGuid().ToString().Substring(0, 4)}_{suffix}.png";
-                string fullPath = Path.Combine(_debugFolderPath, filename);
-
-                bmp.Save(fullPath, System.Drawing.Imaging.ImageFormat.Png);
             }
             catch (Exception ex)
             {
+                // Можно вывести ошибку в консоль, если нужно
             }
         }
 
-        private void btnTrainOne_Click(object sender, EventArgs e)
-        {
-            FigureType currentDigit = (FigureType)(int)classCounter.Value;
 
-            Sample originalSample = _camera.ProcessCurrentFrame(currentDigit);
-            if (originalSample == null) return;
-
-            List<Sample> samplesToAdd = new List<Sample>();
-            samplesToAdd.Add(originalSample);
-
-            SaveDebugImage(originalSample, "ORIGINAL");
-
-            Random rnd = new Random();
-            for (int i = 0; i < 10; i++)
-            {
-                double[] augmentedInput = (double[])originalSample.input.Clone();
-                for (int j = 0; j < augmentedInput.Length; j++)
-                {
-                    if (rnd.NextDouble() < 0.15)
-                    {
-                        double noise = (rnd.NextDouble() - 0.5) * 0.4;
-                        augmentedInput[j] = Math.Max(0, Math.Min(1, augmentedInput[j] + noise));
-                    }
-                }
-
-                var fakeSample = new Sample(augmentedInput, 10, currentDigit);
-                samplesToAdd.Add(fakeSample);
-
-                SaveDebugImage(fakeSample, $"AUG_{i}");
-            }
-
-            foreach (var s in samplesToAdd)
-            {
-                _trainingSet.AddSample(s);
-            }
-
-            if (Net != null) Net.Train(originalSample, 0.01, parallelCheckBox.Checked);
-
-            label1.Text = $"Всего: {_trainingSet.Count} (+11). Цифра: {currentDigit}";
-            label1.ForeColor = Color.Blue;
-        }
-
+        // Обработчик кнопки "Обучить"
         private async void button1_Click(object sender, EventArgs e)
         {
+            // Если данных нет - ругаемся
             if (_trainingSet.Count == 0)
             {
-                MessageBox.Show("Сначала соберите примеры!");
+                MessageBox.Show("Сначала соберите примеры (с камеры или загрузите датасет)!");
                 return;
             }
 
+            // Блокируем интерфейс
             label1.Text = "Идет обучение...";
             label1.ForeColor = Color.DarkOrange;
             SetButtonsEnabled(false);
+            progressBar1.Value = 0;
 
             try
             {
+                // Считываем настройки в переменные (чтобы не лезть к UI из другого потока)
+                var currentNet = Net;
+                int epochs = (int)EpochesCounter.Value;
+                double errorLimit = (100 - AccuracyCounter.Value) / 100.0;
+                bool useParallel = parallelCheckBox.Checked;
+
+                // Запускаем обучение в фоновом потоке
                 double error = await Task.Run(() =>
-                    Net.TrainOnDataSet(
+                    currentNet.TrainOnDataSet(
                         _trainingSet,
-                        (int)EpochesCounter.Value,
-                        (100 - AccuracyCounter.Value) / 100.0,
-                        parallelCheckBox.Checked
+                        epochs,
+                        errorLimit,
+                        useParallel
                     )
                 );
 
-                label1.Text = $"Готово. Ошибка: {error:F5}";
-                label1.ForeColor = Color.Green;
-                StatusLabel.Text = "Ошибка: " + error;
+                // После обучения проверяем точность
+                double accuracy = _trainingSet.TestNeuralNetwork(currentNet);
+
+                label1.Text = $"Ошибка: {error:F5} | Точность: {accuracy * 100:F1}%";
+                label1.ForeColor = accuracy > 0.8 ? Color.Green : Color.Red;
+                StatusLabel.Text = $"Last Run: Err={error:F5}, Acc={accuracy * 100:F1}%";
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Ошибка: " + ex.Message);
+                MessageBox.Show("Ошибка обучения: " + ex.Message);
             }
             finally
             {
+                // Разблокируем интерфейс
                 SetButtonsEnabled(true);
             }
+        }
+        private void btnTrainOne_Click(object sender, EventArgs e)
+        {
+            if (_camera == null) return;
+            FigureType currentDigit = (FigureType)(int)classCounter.Value;
+
+            // 1. Захватываем оригинал
+            Sample originalSample = _camera.ProcessCurrentFrame(currentDigit);
+            if (originalSample == null)
+            {
+                MessageBox.Show("Цифра не найдена в синем квадрате!");
+                return;
+            }
+
+            // Сохраняем оригинал
+            _trainingSet.AddSample(originalSample);
+            SaveDebugImage(originalSample, "ORIG");
+
+            // 2. ГЕНЕРАЦИЯ ДАТАСЕТА
+            // Генерируем 200 штук для этой цифры (можно поставить хоть 1000)
+            int countToGenerate = 200;
+
+            // Используем наш новый Helper
+            Sample[] augmentedSeries = AugmentationHelper.GenerateSeries(originalSample, countToGenerate);
+
+            // Добавляем всю пачку в базу и сохраняем файлы
+            for (int i = 0; i < augmentedSeries.Length; i++)
+            {
+                _trainingSet.AddSample(augmentedSeries[i]);
+
+                // Обязательно сохраняем, чтобы потом можно было загрузить через "Загрузить датасет"
+                // (Сохраняем каждый 5-й, чтобы диск не забивать, или убери условие, чтобы сохранить ВСЕ)
+                if (i % 1 == 0) // Сейчас сохраняет ВСЕ (200 файлов)
+                {
+                    SaveDebugImage(augmentedSeries[i], $"AUG_{i}");
+                }
+            }
+
+            // Обновляем текст на форме
+            label1.Text = $"В базе: {_trainingSet.Count} (+1 оригинал, +{countToGenerate} копий)";
+            label1.ForeColor = Color.Blue;
+            StatusLabel.Text = $"Сгенерировано {countToGenerate} вариаций для цифры {(int)currentDigit}";
         }
 
         private void button2_Click(object sender, EventArgs e)
@@ -214,19 +301,17 @@ namespace NeuralNetwork1
             Sample sample = _camera.ProcessCurrentFrame();
             if (sample == null) return;
 
-            SaveDebugImage(sample, "PREDICT_TRY");
-
             Net.Predict(sample);
 
             int result = (int)sample.recognizedClass;
             label1.Text = $"Распознано: {result}";
+            label1.ForeColor = (result == (int)classCounter.Value) ? Color.Green : Color.Red;
 
-            if (result == (int)classCounter.Value)
-                label1.ForeColor = Color.Green;
-            else
-                label1.ForeColor = Color.Red;
-
-            label8.Text = "Выходы:\n" + string.Join("\n", sample.Output.Select((val, i) => $"{i}: {val:F4}"));
+            // Выводим вероятности
+            string probs = "";
+            for (int i = 0; i < sample.Output.Length; i++)
+                probs += $"{i}: {sample.Output[i]:F2}\n";
+            label8.Text = probs;
         }
 
         private void button3_Click(object sender, EventArgs e)
@@ -256,9 +341,10 @@ namespace NeuralNetwork1
                 progressBar1.Invoke(new TrainProgressHandler(UpdateLearningInfo), progress, error, elapsedTime);
                 return;
             }
-            StatusLabel.Text = $"Err: {error:F4} | Path: {_debugFolderPath}";
+            StatusLabel.Text = $"Err: {error:F5}";
             int p = (int)(progress * 100);
             progressBar1.Value = Math.Min(100, Math.Max(0, p));
+            elapsedTimeLabel.Text = "Время: " + elapsedTime.ToString(@"mm\:ss");
         }
 
         private void SetButtonsEnabled(bool enabled)
@@ -267,6 +353,8 @@ namespace NeuralNetwork1
             testNetButton.Enabled = enabled;
             trainOneButton.Enabled = enabled;
             recreateNetButton.Enabled = enabled;
+            btnLoadDataset.Enabled = enabled;
+            groupBox1.Enabled = enabled;
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -275,6 +363,7 @@ namespace NeuralNetwork1
             base.OnFormClosing(e);
         }
 
+        // Пустые обработчики, чтобы дизайнер не ругался
         private void classCounter_ValueChanged(object sender, EventArgs e) { }
         private void recreateNetButton_MouseEnter(object sender, EventArgs e) { }
         private void netTrainButton_MouseEnter(object sender, EventArgs e) { }
